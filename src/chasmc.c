@@ -364,7 +364,7 @@ static void add_local(FrameLayout* F, const char* name, Type ty) {
     if (F->stack_used % 8) F->stack_used += (8 - (F->stack_used % 8));
 
     Local L;
-    L.name = xstrdup(name);
+    L.name = strdup(name);
     L.ty = ty;
     L.rbp_off = -F->stack_used;
     F->locals[F->nlocals++] = L;
@@ -591,7 +591,7 @@ static void parse_and_emit_func(P* p, const Token* name_tok, bool is_global) {
         if (p->cur.kind == TK_NL) { next(p); continue; }
 
         // let
-        if (p->cur.kind == TK_IDENT && tok_is(&p->cur, "let")) {
+        if (p->cur.kind == TK_IDENT && token_is(&p->cur, "let")) {
             next(p);
             if (p->cur.kind != TK_IDENT) die("expected local name after let");
             Token lname = p->cur; next(p);
@@ -609,7 +609,7 @@ static void parse_and_emit_func(P* p, const Token* name_tok, bool is_global) {
         }
 
         // ret
-        if (p->cur.kind == TK_IDENT && tok_is(&p->cur, "ret")) {
+        if (p->cur.kind == TK_IDENT && token_is(&p->cur, "ret")) {
             next(p);
             if (p->cur.kind != TK_SEMI) {
                 emit_expr(p, &F); // into rax
@@ -630,7 +630,7 @@ static void parse_and_emit_func(P* p, const Token* name_tok, bool is_global) {
         }
 
         // call statement
-        if (p->cur.kind == TK_IDENT && tok_is(&p->cur, "call")) {
+        if (p->cur.kind == TK_IDENT && token_is(&p->cur, "call")) {
             next(p);
             if (p->cur.kind != TK_IDENT) die("expected function name after call");
             Token callee = p->cur; next(p);
@@ -688,13 +688,13 @@ static void translate(const char* in_path, const char* out_path) {
         if (p.cur.kind == TK_HASH) {
             next(&p);
             if (p.cur.kind != TK_IDENT) die("expected directive after #");
-            if (tok_is(&p.cur, "section")) {
+            if (token_is(&p.cur, "section")) {
                 next(&p);
                 if (p.cur.kind != TK_IDENT) die("expected section name");
-                if (tok_is(&p.cur,"program")) outln(&O, "section .text");
-                else if (tok_is(&p.cur,"data")) outln(&O, "section .data");
-                else if (tok_is(&p.cur,"rodata")) outln(&O, "section .rodata");
-                else if (tok_is(&p.cur,"bss")) outln(&O, "section .bss");
+                if (token_is(&p.cur,"program")) outln(&O, "section .text");
+                else if (token_is(&p.cur,"data")) outln(&O, "section .data");
+                else if (token_is(&p.cur,"rodata")) outln(&O, "section .rodata");
+                else if (token_is(&p.cur,"bss")) outln(&O, "section .bss");
                 else die("unknown section");
                 next(&p);
                 continue;
@@ -703,7 +703,7 @@ static void translate(const char* in_path, const char* out_path) {
         }
 
         // global label block: global main:
-        if (p.cur.kind == TK_IDENT && tok_is(&p.cur, "global")) {
+        if (p.cur.kind == TK_IDENT && token_is(&p.cur, "global")) {
             next(&p);
             if (p.cur.kind != TK_IDENT) die("expected label name after global");
             Token name = p.cur;
@@ -722,7 +722,7 @@ static void translate(const char* in_path, const char* out_path) {
         }
 
         // func
-        if (p.cur.kind == TK_IDENT && tok_is(&p.cur, "func")) {
+        if (p.cur.kind == TK_IDENT && token_is(&p.cur, "func")) {
             next(&p);
             if (p.cur.kind != TK_IDENT) die("expected function name");
             Token fname = p.cur; next(&p);
