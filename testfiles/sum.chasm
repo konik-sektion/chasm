@@ -1,4 +1,4 @@
-#import ./dummy_stddef.ravine
+#import dummy_stddef.ravine
 #uns dummy_stddef
 
 #section data

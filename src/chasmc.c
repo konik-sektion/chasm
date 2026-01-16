@@ -504,6 +504,18 @@ static char* resolve_reference_name(P* p, const char* name, const char* explicit
     return strdup(name);
 }
 
+static void add_using_namespace(P* p, const char* ns) {
+    for (size_t i = 0; i < p->using_count; i++) {
+        if (strcmp(p->using_namespaces[i], ns) == 0) return;
+    }
+    if (p->using_count + 1 > p->using_cap) {
+        p->using_cap = (p->using_cap == 0) ? 4 : p->using_cap * 2;
+        p->using_namespaces = (char**)realloc(p->using_namespaces, p->using_cap * sizeof(char*));
+        if (!p->using_namespaces) die("out of memory");
+    }
+    p->using_namespaces[p->using_count++] = strdup(ns);
+}
+
 typedef struct {
     char* name;
     char* ns;
