@@ -1,0 +1,21 @@
+#import ./dummy_stddef.ravine
+#uns dummy_stddef
+
+#section data
+
+let sum:u8;
+
+#section program
+
+local inline func add(num1:u8, num2:u8) >> u8:
+    ret num1 + num2;
+end
+
+global main >> Null:
+    $print_str, "Hello, world!" + 0xA + 0;
+
+    set sum:u8 = add(5, 2);
+    $print_int, sum;
+
+    $exit, 0;
+end

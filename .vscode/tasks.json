@@ -1,0 +1,22 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build Chasm assembler",
+            "type": "shell",
+            "command": "gcc",
+            "args": [
+                "-std=c11",
+                "-O2",
+                "-Wall",
+                "-Wextra",
+                "-pedantic",
+                "src/chasmc.c",
+                "-o",
+                "chasmc.exe"
+            ],
+            "group": "build",
+            "problemMatcher": "$gcc"
+        }
+    ]
+}

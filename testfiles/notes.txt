@@ -1,0 +1,13 @@
+ chasm sections:
+ - #section macros  (for macros)
+ - #section data    (for program data, like vars)
+ - #section program (the program itself)
+ notes:
+  - functions are defined either global or local as: `<local/global> func func_name(<args>):` and are terminated with `end`.
+    --> global functions (when defined in the highest scope) are accessible from other files or by other processes, and are
+        accesible even before they are defined.   
+    --> global functions (when defined in any other scope, e.g. in another function) are still accessible by other files or
+        processes, but can only be called within their scope. They can still be called before definition in their scope.
+    --> local functions are the opposite of globals in most ways that should be self-explanatory.
+    --> inline functions work similarly to c/c++ inlines, but inlines are not suggestions to ChASM. ChASM's assembler will
+        always enforce `inline`, so make sure you use it correctly!
