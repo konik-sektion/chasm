@@ -11,7 +11,7 @@ local inline func add(num1:u8, num2:u8) >> u8:
     ret num1 + num2;
 end
 
-global main >> Null:
+global func main >> Null:
     $print_str, "Hello, world!" + 0xA + 0;
 
     set sum:u8 = add(5, 2);
