@@ -1,0 +1,104 @@
+;;; dummy_stddef.ravine
+#module dummy_stddef
+
+#section bss
+
+@asm {
+    buffer: resb 32
+    buffer_end:
+}
+
+#section macros
+
+def print_str, 1:
+    @asm {
+        ; write(1, %1, strlen(%1))
+        push rax
+        push rdi
+        push rsi
+        push rdx
+        push rcx
+
+        mov rsi, %1
+        xor rcx, rcx
+
+    %%loop:
+        cmp byte [rsi + rcx], 0
+        je  %%done
+        inc rcx
+        jmp %%loop
+
+    %%done:
+        mov rax, 1
+        mov rdi, 1
+        mov rdx, rcx
+        syscall
+
+        pop rcx
+        pop rdx
+        pop rsi
+        pop rdi
+        pop rax
+    }
+enddef
+
+def print_int, 1:
+    @asm {
+        ; prints unsigned integer in %1 to stdout
+        push rax
+        push rbx
+        push rcx
+        push rdx
+        push rsi
+        push rdi
+
+        mov rax, %1
+        mov rdi, buffer_end
+        mov byte [rdi], 0      ; terminator
+        dec rdi
+
+        cmp rax, 0
+        jne %%loop
+        mov byte [rdi], '0'
+        jmp %%emit
+
+    %%loop:
+        xor rdx, rdx
+        mov rcx, 10
+        div rcx                ; rax = rax/10, rdx = rax%10
+        add dl, '0'
+        mov byte [rdi], dl
+        dec rdi
+        cmp rax, 0
+        jne %%loop
+
+        inc rdi                ; point to first digit
+
+    %%emit:
+        ; compute len = buffer_end - rdi
+        mov rsi, rdi
+        mov rdx, buffer_end
+        sub rdx, rsi
+
+        mov rax, 1
+        mov rdi, 1
+        syscall
+
+        pop rdi
+        pop rsi
+        pop rdx
+        pop rcx
+        pop rbx
+        pop rax
+    }
+enddef
+
+def exit, 1:
+    @asm {
+        mov rax, 60
+        mov rdi, %1
+        syscall
+    }
+enddef
+
+#endmodule

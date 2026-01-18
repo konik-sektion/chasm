@@ -59,7 +59,10 @@ typedef enum {
 
     TK_AT,
 
+    TK_DOLLAR,
     TK_STRING,
+    TK_SCOPE,
+    TK_PATH,
 } TokenKind;
 
 typedef struct {
@@ -89,6 +92,10 @@ static bool is_ident_start(int c) {
 
 static bool is_ident(int c) {
     return isalnum(c) || c=='_';
+}
+
+static bool is_path_char(int c) {
+    return isalnum(c) || c=='_' || c=='/' || c=='.' || c=='-';
 }
 
 static Token make_token(Lexer* L, TokenKind k, const char* s, const char* e, int line, int col) {
@@ -222,7 +229,14 @@ static Token next_token(Lexer* L) {
     // punctuation
     switch (c) {
         case '#': return make_token(L, TK_HASH, s, s+1, line, col);
-        case ':': return make_token(L, TK_COLON, s, s+1, line, col);
+        case ':': {
+            if (L->i < L->len && L->src[L->i] == ':') {
+                L->i++;
+                L->col++;
+                return make_token(L, TK_SCOPE, s, s+2, line, col);
+            }
+            return make_token(L, TK_COLON, s, s+1, line, col);
+        }
         case ';': return make_token(L, TK_SEMI, s, s+1, line, col);
         case ',': return make_token(L, TK_COMMA, s, s+1, line, col);
         case '(': return make_token(L, TK_LPAREN, s, s+1, line, col);
@@ -234,6 +248,7 @@ static Token next_token(Lexer* L) {
         case '=': return make_token(L, TK_EQ, s, s+1, line, col);
         case '+': return make_token(L, TK_PLUS, s, s+1, line, col);
         case '-': return make_token(L, TK_MINUS, s, s+1, line, col);
+        case '$': return make_token(L, TK_DOLLAR, s, s+1, line, col);
         case '@': return make_token(L, TK_AT, s, s+1, line, col);
         case '>': {
             // maybe rarrow?!
@@ -264,6 +279,14 @@ static Token next_token(Lexer* L) {
         default: break;
     }
 
+    if (c == '.' || c == '/') {
+        while (L->i < L->len && is_path_char((unsigned char)L->src[L->i])) {
+            L->i++;
+            L->col++;
+        }
+        return make_token(L, TK_PATH, s, L->src + L->i, line, col);
+    }
+
     // integer literals
     if (isdigit((unsigned char)c)) {
         while (L->i < L->len && isdigit((unsigned char)L->src[L->i])) {
@@ -275,11 +298,17 @@ static Token next_token(Lexer* L) {
 
     // identifier
     if (is_ident_start((unsigned char)c)) {
+        bool has_path = false;
         while (L->i < L->len && is_ident((unsigned char)L->src[L->i])) {
             L->i++;
             L->col++;
         }
-        return make_token(L, TK_IDENT, s, L->src + L->i, line, col);
+        while (L->i < L->len && is_path_char((unsigned char)L->src[L->i])) {
+            has_path = true;
+            L->i++;
+            L->col++;
+        }
+        return make_token(L, has_path ? TK_PATH : TK_IDENT, s, L->src + L->i, line, col);
     }
 
     die("invalid character");
@@ -391,9 +420,54 @@ static void outfmt(Out* O, const char* fmt, ...) {
 }
 
 typedef struct {
+    char* name;
+    char* qualified;
+} FuncSymbol;
+
+typedef struct FuncTable {
+    FuncSymbol* items;
+    size_t count;
+    size_t cap;
+} FuncTable;
+
+static void add_func_symbol(FuncTable* table, const char* name, const char* qualified) {
+    if (table->count + 1 > table->cap) {
+        table->cap = (table->cap == 0) ? 16 : table->cap * 2;
+        table->items = (FuncSymbol*)realloc(table->items, table->cap * sizeof(FuncSymbol));
+        if (!table->items) die("oom");
+    }
+    table->items[table->count++] = (FuncSymbol){ strdup(name), strdup(qualified) };
+}
+
+static const char* lookup_func_symbol(FuncTable* table, const char* name) {
+    const char* hit = NULL;
+    for (size_t i = 0; i < table->count; i++) {
+        if (strcmp(table->items[i].name, name) == 0) {
+            if (hit) die("ambiguous function name; use namespace qualifier");
+            hit = table->items[i].qualified;
+        }
+    }
+    return hit;
+}
+
+static void free_func_table(FuncTable* table) {
+    for (size_t i = 0; i < table->count; i++) {
+        free(table->items[i].name);
+        free(table->items[i].qualified);
+    }
+    free(table->items);
+}
+
+typedef struct {
     Lexer* L;
     Token cur;
     Out* O;
+    char* current_namespace;
+    char** using_namespaces;
+    size_t using_count;
+    size_t using_cap;
+    struct FuncTable* func_table;
+    const char* file_path;
 } P;
 
 static void next(P* p){ p->cur = next_token(p->L); }
@@ -403,13 +477,68 @@ static void skip_nl(P* p){
     while (p->cur.kind==TK_NL) next(p);
 }
 
+static char* join_namespace(const char* ns, const char* name) {
+    size_t nlen = strlen(ns);
+    size_t mlen = strlen(name);
+    char* out = (char*)malloc(nlen + 2 + mlen + 1);
+    if (!out) die("oom");
+    memcpy(out, ns, nlen);
+    out[nlen] = '_';
+    out[nlen + 1] = '_';
+    memcpy(out + nlen + 2, name, mlen);
+    out[nlen + 2 + mlen] = 0;
+    return out;
+}
+
+static void add_using_namespace(P* p, const char* name) {
+    if (p->using_count + 1 > p->using_cap) {
+        p->using_cap = (p->using_cap == 0) ? 8 : p->using_cap * 2;
+        p->using_namespaces = (char**)realloc(p->using_namespaces, p->using_cap * sizeof(char*));
+        if (!p->using_namespaces) die("oom");
+    }
+    p->using_namespaces[p->using_count++] = strdup(name);
+}
+
+static char* resolve_definition_name(P* p, const char* name) {
+    if (p->current_namespace) return join_namespace(p->current_namespace, name);
+    return strdup(name);
+}
+
+static char* resolve_reference_name(P* p, const char* name, const char* explicit_ns) {
+    if (explicit_ns) return join_namespace(explicit_ns, name);
+
+    const char* local = lookup_func_symbol(p->func_table, name);
+    if (local) return strdup(local);
+    if (p->current_namespace) return join_namespace(p->current_namespace, name);
+    if (p->using_count == 1) return join_namespace(p->using_namespaces[0], name);
+    if (p->using_count > 1) die("ambiguous namespace reference; use <ns>::<name>");
+    return strdup(name);
+}
+
+typedef struct {
+    char* name;
+    char* ns;
+} QualifiedName;
+
+static QualifiedName parse_qualified_name(P* p) {
+    if (p->cur.kind != TK_IDENT) die("expected identifier");
+    char* first = token_str(&p->cur);
+    next(p);
+    if (p->cur.kind == TK_SCOPE) {
+        next(p);
+        if (p->cur.kind != TK_IDENT) die("expected identifier after '::'");
+        char* second = token_str(&p->cur);
+        next(p);
+        return (QualifiedName){ second, first };
+    }
+    return (QualifiedName){ first, NULL };
+}
+
 // forward decls
 static void emit_expr(P* p, FrameLayout* F);
 
-static void emit_load_ident(P* p, FrameLayout* F, const Token* id) {
-    char* name = token_str(id);
+static void emit_load_local(P* p, FrameLayout* F, const char* name) {
     Local* L = find_local(F, name);
-    free(name);
     if (!L) die("unknown identifier (local not found)");
 
     // movzx rax, <size> [rbp+off]
@@ -422,10 +551,8 @@ static void emit_load_ident(P* p, FrameLayout* F, const Token* id) {
     }
 }
 
-static void emit_store_ident(P* p, FrameLayout* F, const Token* id) {
-    char* name = token_str(id);
+static void emit_store_local(P* p, FrameLayout* F, const char* name) {
     Local* L = find_local(F, name);
-    free(name);
     if (!L) die("unknown identifier (local not found)");
 
     const char* sz = nasm_size(L->ty);
@@ -436,7 +563,7 @@ static void emit_store_ident(P* p, FrameLayout* F, const Token* id) {
     else outfmt(p->O, "    mov %s [rbp%+d], rax\n", sz, L->rbp_off);
 }
 
-static void emit_call(P* p, FrameLayout* F, const Token* callee) {
+static void emit_call(P* p, FrameLayout* F, const char* callee) {
     static const char* argregs[] = {"rdi","rsi","rdx","rcx","r8","r9"};
     int argc = 0;
 
@@ -454,9 +581,7 @@ static void emit_call(P* p, FrameLayout* F, const Token* callee) {
     expect(p, TK_RPAREN, "expected ')' after call args");
 
     // call
-    char* fname = token_str(callee);
-    outfmt(p->O, "    call %s\n", fname);
-    free(fname);
+    outfmt(p->O, "    call %s\n", callee);
     // return value in rax
 }
 
@@ -469,17 +594,31 @@ static void emit_factor(P* p, FrameLayout* F) {
         return;
     }
     if (p->cur.kind == TK_IDENT) {
-        Token id = p->cur;
-        next(p);
+        QualifiedName qn = parse_qualified_name(p);
+
+        if (qn.ns) {
+            if (p->cur.kind != TK_LPAREN) die("namespaced identifier must be a call");
+            next(p);
+            char* fname = resolve_reference_name(p, qn.name, qn.ns);
+            emit_call(p, F, fname);
+            free(fname);
+            free(qn.name);
+            free(qn.ns);
+            return;
+        }
 
         // function call?
         if (p->cur.kind == TK_LPAREN) {
             next(p);
-            emit_call(p, F, &id);
+            char* fname = resolve_reference_name(p, qn.name, NULL);
+            emit_call(p, F, fname);
+            free(fname);
+            free(qn.name);
             return;
         }
 
-        emit_load_ident(p, F, &id);
+        emit_load_local(p, F, qn.name);
+        free(qn.name);
         return;
     }
     if (p->cur.kind == TK_LPAREN) {
@@ -513,10 +652,32 @@ static void emit_inline_asm(P* p) {
     die("fuck you inline asm not yet implemented");
 }
 
-static void parse_and_emit_func(P* p, const Token* name_tok, bool is_global) {
-    (void)is_global;
+static void emit_macro_statement(P* p) {
+    if (p->cur.kind != TK_IDENT) die("expected macro name after '$'");
+    const char* start = p->cur.start;
+    const char* end = p->cur.end;
 
-    char* fname = token_str(name_tok);
+    for (;;) {
+        next(p);
+        if (p->cur.kind == TK_SEMI) break;
+        if (p->cur.kind == TK_EOF || p->cur.kind == TK_NL) die("expected ';' after macro invocation");
+        end = p->cur.end;
+    }
+
+    size_t len = (size_t)(end - start);
+    char* line = (char*)malloc(len + 1);
+    if (!line) die("oom");
+    memcpy(line, start, len);
+    line[len] = 0;
+    outfmt(p->O, "    %s\n", line);
+    free(line);
+    next(p);
+}
+
+static void parse_and_emit_func(P* p, const char* raw_name, bool is_global, bool is_inline) {
+    (void)is_inline;
+
+    char* fname = resolve_definition_name(p, raw_name);
 
     // parse params
     expect(p, TK_LPAREN, "expected '(' after func name");
@@ -555,6 +716,7 @@ static void parse_and_emit_func(P* p, const Token* name_tok, bool is_global) {
     expect(p, TK_INDENT, "expected indented function body");
 
     // emit label
+    if (is_global) outfmt(p->O, "global %s\n", fname);
     outfmt(p->O, "%s:\n", fname);
 
     // prologue
@@ -587,7 +749,13 @@ static void parse_and_emit_func(P* p, const Token* name_tok, bool is_global) {
 
     // statement loop until DEDENT
     for (;;) {
-        if (p->cur.kind == TK_DEDENT) { next(p); break; }
+        if (p->cur.kind == TK_DEDENT) {
+            next(p);
+            if (p->cur.kind == TK_IDENT && token_is(&p->cur, "end")) {
+                next(p);
+            }
+            break;
+        }
         if (p->cur.kind == TK_NL) { next(p); continue; }
 
         // let
@@ -626,6 +794,9 @@ static void parse_and_emit_func(P* p, const Token* name_tok, bool is_global) {
             // function ends here; consume until DEDENT
             while (p->cur.kind != TK_DEDENT && p->cur.kind != TK_EOF) next(p);
             if (p->cur.kind == TK_DEDENT) next(p);
+            if (p->cur.kind == TK_IDENT && token_is(&p->cur, "end")) {
+                next(p);
+            }
             break;
         }
 
@@ -633,10 +804,14 @@ static void parse_and_emit_func(P* p, const Token* name_tok, bool is_global) {
         if (p->cur.kind == TK_IDENT && token_is(&p->cur, "call")) {
             next(p);
             if (p->cur.kind != TK_IDENT) die("expected function name after call");
-            Token callee = p->cur; next(p);
+            QualifiedName qn = parse_qualified_name(p);
             expect(p, TK_LPAREN, "expected '(' after call name");
             next(p);
-            emit_call(p, &F, &callee);
+            char* fname = resolve_reference_name(p, qn.name, qn.ns);
+            emit_call(p, &F, fname);
+            free(fname);
+            free(qn.name);
+            free(qn.ns);
             expect(p, TK_SEMI, "expected ';' after call");
             next(p);
             continue;
@@ -647,15 +822,123 @@ static void parse_and_emit_func(P* p, const Token* name_tok, bool is_global) {
             die("@asm nyi fuq u");
         }
 
+        if (p->cur.kind == TK_DOLLAR) {
+            next(p);
+            emit_macro_statement(p);
+            continue;
+        }
+
+        if (p->cur.kind == TK_IDENT && token_is(&p->cur, "end")) {
+            next(p);
+            break;
+        }
+
         die("unsupported statement");
     }
 
     free(fname);
 }
 
-static void translate(const char* in_path, const char* out_path) {
+typedef struct {
+    char** paths;
+    size_t count;
+    size_t cap;
+} ImportSet;
+
+static bool import_seen(ImportSet* set, const char* path) {
+    for (size_t i = 0; i < set->count; i++) {
+        if (strcmp(set->paths[i], path) == 0) return true;
+    }
+    return false;
+}
+
+static void add_import(ImportSet* set, const char* path) {
+    if (set->count + 1 > set->cap) {
+        set->cap = (set->cap == 0) ? 16 : set->cap * 2;
+        set->paths = (char**)realloc(set->paths, set->cap * sizeof(char*));
+        if (!set->paths) die("oom");
+    }
+    set->paths[set->count++] = strdup(path);
+}
+
+static char* resolve_import_path(const char* from_path, const char* import_path) {
+    if (import_path[0] == '/') return strdup(import_path);
+    const char* slash = strrchr(from_path, '/');
+    if (!slash) return strdup(import_path);
+    size_t dir_len = (size_t)(slash - from_path + 1);
+    size_t rel_len = strlen(import_path);
+    char* out = (char*)malloc(dir_len + rel_len + 1);
+    if (!out) die("oom");
+    memcpy(out, from_path, dir_len);
+    memcpy(out + dir_len, import_path, rel_len);
+    out[dir_len + rel_len] = 0;
+    return out;
+}
+
+static void collect_func_symbols(const char* src, size_t len, FuncTable* table) {
+    Lexer L = {0};
+    L.src = src;
+    L.len = len;
+    L.i = 0;
+    L.line = 1;
+    L.col = 1;
+    L.indent_top = 0;
+    L.indent_stack[0] = 0;
+    L.at_line_start = true;
+    L.pending_dedents = 0;
+
+    char* current_namespace = NULL;
+    for (;;) {
+        Token t = next_token(&L);
+        if (t.kind == TK_EOF) break;
+        if (t.kind == TK_HASH) {
+            Token dir = next_token(&L);
+            if (dir.kind != TK_IDENT) die("expected directive after #");
+            if (token_is(&dir, "module")) {
+                Token name = next_token(&L);
+                if (name.kind != TK_IDENT) die("expected module name after #module");
+                free(current_namespace);
+                current_namespace = token_str(&name);
+                continue;
+            }
+            if (token_is(&dir, "endmodule")) {
+                free(current_namespace);
+                current_namespace = NULL;
+                continue;
+            }
+        }
+
+        if (t.kind == TK_IDENT && (token_is(&t, "local") || token_is(&t, "global"))) {
+            Token maybe_inline = next_token(&L);
+            if (maybe_inline.kind == TK_IDENT && token_is(&maybe_inline, "inline")) {
+                maybe_inline = next_token(&L);
+            }
+            if (maybe_inline.kind != TK_IDENT || !token_is(&maybe_inline, "func")) {
+                die("expected 'func' after local/global");
+            }
+            Token name = next_token(&L);
+            if (name.kind != TK_IDENT) die("expected function name");
+            char* raw = token_str(&name);
+            char* qualified = current_namespace ? join_namespace(current_namespace, raw) : strdup(raw);
+            add_func_symbol(table, raw, qualified);
+            free(raw);
+            free(qualified);
+            continue;
+        }
+    }
+
+    free(current_namespace);
+}
+
+static void compile_file(const char* in_path, Out* O, ImportSet* imports, bool emit_header) {
+    if (import_seen(imports, in_path)) return;
+    add_import(imports, in_path);
+
     size_t len=0;
     char* src = read_file_all(in_path, &len);
+
+    FuncTable table = {0};
+    collect_func_symbols(src, len, &table);
 
     Lexer L = {0};
     L.src = src;
@@ -668,73 +951,128 @@ static void translate(const char* in_path, const char* out_path) {
     L.at_line_start = true;
     L.pending_dedents = 0;
 
-    FILE* out = fopen(out_path, "wb");
-    if (!out) die("cannot open output file");
-
-    Out O = { out };
-    P p = { &L, {0}, &O };
+    P p = { &L, {0}, O };
+    p.current_namespace = NULL;
+    p.using_namespaces = NULL;
+    p.using_count = 0;
+    p.using_cap = 0;
+    p.func_table = &table;
+    p.file_path = in_path;
     next(&p);
 
-    // NASM header
-    outln(&O, "default rel");
-
-    // default section
-    outln(&O, "section .text");
+    if (emit_header) {
+        outln(O, "default rel");
+        outln(O, "section .text");
+    }
 
     while (p.cur.kind != TK_EOF) {
         if (p.cur.kind == TK_NL) { next(&p); continue; }
 
-        // #section
+        // #section, #module, #endmodule, #import, #uns
         if (p.cur.kind == TK_HASH) {
             next(&p);
             if (p.cur.kind != TK_IDENT) die("expected directive after #");
             if (token_is(&p.cur, "section")) {
                 next(&p);
                 if (p.cur.kind != TK_IDENT) die("expected section name");
-                if (token_is(&p.cur,"program")) outln(&O, "section .text");
-                else if (token_is(&p.cur,"data")) outln(&O, "section .data");
-                else if (token_is(&p.cur,"rodata")) outln(&O, "section .rodata");
-                else if (token_is(&p.cur,"bss")) outln(&O, "section .bss");
+                if (token_is(&p.cur,"program")) outln(O, "section .text");
+                else if (token_is(&p.cur,"data")) outln(O, "section .data");
+                else if (token_is(&p.cur,"rodata")) outln(O, "section .rodata");
+                else if (token_is(&p.cur,"bss")) outln(O, "section .bss");
                 else die("unknown section");
+                next(&p);
+                continue;
+            }
+            if (token_is(&p.cur, "module")) {
+                next(&p);
+                if (p.cur.kind != TK_IDENT) die("expected module name after #module");
+                free(p.current_namespace);
+                p.current_namespace = token_str(&p.cur);
+                next(&p);
+                continue;
+            }
+            if (token_is(&p.cur, "endmodule")) {
+                if (!p.current_namespace) die("#endmodule without active module");
+                free(p.current_namespace);
+                p.current_namespace = NULL;
+                next(&p);
+                continue;
+            }
+            if (token_is(&p.cur, "import")) {
+                next(&p);
+                if (p.cur.kind != TK_IDENT && p.cur.kind != TK_STRING && p.cur.kind != TK_PATH) {
+                    die("expected path after #import");
+                }
+                char* import_token = token_str(&p.cur);
+                char* resolved = resolve_import_path(p.file_path, import_token);
+                free(import_token);
+                next(&p);
+                compile_file(resolved, O, imports, false);
+                free(resolved);
+                continue;
+            }
+            if (token_is(&p.cur, "uns")) {
+                next(&p);
+                if (p.cur.kind != TK_IDENT) die("expected namespace after #uns");
+                char* ns = token_str(&p.cur);
+                add_using_namespace(&p, ns);
+                free(ns);
                 next(&p);
                 continue;
             }
             die("unknown #directive");
         }
 
-        // global label block: global main:
-        if (p.cur.kind == TK_IDENT && token_is(&p.cur, "global")) {
+        // func declarations must be annotated with local/global
+        if (p.cur.kind == TK_IDENT && (token_is(&p.cur, "local") || token_is(&p.cur, "global"))) {
+            bool is_global = token_is(&p.cur, "global");
             next(&p);
-            if (p.cur.kind != TK_IDENT) die("expected label name after global");
-            Token name = p.cur;
-            char* sname = token_str(&name);
+            bool is_inline = false;
+            if (p.cur.kind == TK_IDENT && token_is(&p.cur, "inline")) {
+                is_inline = true;
+                next(&p);
+            }
+            if (p.cur.kind != TK_IDENT || !token_is(&p.cur, "func")) {
+                die("expected 'func' after local/global");
+            }
             next(&p);
-            expect(&p, TK_COLON, "expected ':' after global name");
-            outfmt(&O, "global %s\n", sname);
-            outfmt(&O, "%s:\n", sname);
-            free(sname);
+            if (p.cur.kind != TK_IDENT) die("expected function name");
+            char* raw = token_str(&p.cur);
             next(&p);
-            skip_nl(&p);
-            expect(&p, TK_INDENT, "expected indented block after global label");
-            while (p.cur.kind != TK_DEDENT && p.cur.kind != TK_EOF) next(&p);
-            if (p.cur.kind == TK_DEDENT) next(&p);
+            parse_and_emit_func(&p, raw, is_global, is_inline);
+            free(raw);
             continue;
         }
 
-        // func
         if (p.cur.kind == TK_IDENT && token_is(&p.cur, "func")) {
-            next(&p);
-            if (p.cur.kind != TK_IDENT) die("expected function name");
-            Token fname = p.cur; next(&p);
-            parse_and_emit_func(&p, &fname, false);
-            continue;
+            die("functions must be declared with 'local func' or 'global func'");
+        }
+
+        if (p.cur.kind == TK_IDENT && token_is(&p.cur, "global")) {
+            die("global is a modifier for func; use 'global func'");
         }
 
         die("unexpected top-level token");
     }
 
-    fclose(out);
+    for (size_t i = 0; i < p.using_count; i++) free(p.using_namespaces[i]);
+    free(p.using_namespaces);
+    free(p.current_namespace);
+    free_func_table(&table);
     free(src);
+}
+
+static void translate(const char* in_path, const char* out_path) {
+    FILE* out = fopen(out_path, "wb");
+    if (!out) die("cannot open output file");
+
+    Out O = { out };
+    ImportSet imports = {0};
+    compile_file(in_path, &O, &imports, true);
+    for (size_t i = 0; i < imports.count; i++) free(imports.paths[i]);
+    free(imports.paths);
+
+    fclose(out);
 }
 
 int main(int argc, char** argv) {
