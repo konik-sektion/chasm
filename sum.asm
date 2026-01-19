@@ -1,0 +1,2 @@
+default rel
+section .text
