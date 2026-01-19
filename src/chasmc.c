@@ -63,6 +63,8 @@ typedef enum {
     TK_STRING,
     TK_SCOPE,
     TK_PATH,
+    TK_CHAR,
+    TK_PERCENT_IDENT,
 } TokenKind;
 
 typedef struct {
@@ -96,6 +98,10 @@ static bool is_ident(int c) {
 
 static bool is_path_char(int c) {
     return isalnum(c) || c=='_' || c=='/' || c=='.' || c=='-';
+}
+
+static bool is_percent_ident_char(int c) {
+    return isalnum(c) || c=='_' || c=='%';
 }
 
 static Token make_token(Lexer* L, TokenKind k, const char* s, const char* e, int line, int col) {
@@ -250,6 +256,12 @@ static Token next_token(Lexer* L) {
         case '-': return make_token(L, TK_MINUS, s, s+1, line, col);
         case '$': return make_token(L, TK_DOLLAR, s, s+1, line, col);
         case '@': return make_token(L, TK_AT, s, s+1, line, col);
+        case '%': {
+            while (L->i < L->len && is_percent_ident_char((unsigned char)L->src[L->i])) {
+                L->i++;
+                L->col++;
+            }
+            return make_token(L, TK_PERCENT_IDENT, s, L->src + L->i, line, col);
         case '>': {
             // maybe rarrow?!
             if (L->i < L->len && L->src[L->i] == '>') {
@@ -275,6 +287,19 @@ static Token next_token(Lexer* L) {
             // token spans without quotes (start .. end)
             Token t = make_token(L, TK_STRING, start, end, line, col);
             return t;
+        }
+        case '\'': {
+            const char* start = L->src + L->i 
+            while (L->i < L->len && L->src[L->i] != '\'') {
+                if (L->src[L->i] == '\n') die("unterminated char literal");
+                L->i++;
+                L->col++;
+            }
+            if (L->i >= L->len) die("unterminated char literal");
+            const char* end = L->src + L->i;
+            L->i++;
+            L->col++;
+            return make_token(L, TK_CHAR, start, end, line, col);
         }
         default: break;
     }
