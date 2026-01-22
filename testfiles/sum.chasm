@@ -1,21 +1,17 @@
-#import ./dummy_stddef.ravine
-#uns dummy_stddef
-
 #section data
-
 let sum:u8;
+let diff:i16;
 
 #section program
-
-local inline func add(num1:u8, num2:u8) >> u8:
+local func add(num1:u8, num2:u8) >> u16:
     ret num1 + num2;
 end
 
-global func main() >> Null:
-    $print_str, "Hello, world!" + 0xA + 0;
+local func subtract(num1:i8, num2:i8) >> i16:
+    ret num1 - num2;
+end
 
-    set sum:u8 = add(5, 2);
-    $print_int, sum;
-
-    $exit, 0;
+global func main() >> u8:
+    set diff:i16 = subtract(5, 2);
+    ret sum;
 end
