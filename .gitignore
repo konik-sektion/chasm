@@ -2,4 +2,7 @@ chasmc
 *.txt
 .vscode
 .vscode/*
-
+.obsidian
+*.asm
+out
+test
