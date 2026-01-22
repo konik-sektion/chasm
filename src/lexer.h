@@ -12,18 +12,17 @@ typedef enum {
 
     TK_IDENT,
     TK_INT,
-    
+
     TK_HASH,
-    TK_COMMA,
-    TK_SEMI,
     TK_COLON,
+    TK_SEMI,
+    TK_COMMA,
     TK_LPAREN,
     TK_RPAREN,
     TK_LBRACE,
     TK_RBRACE,
     TK_LBRACKET,
     TK_RBRACKET,
-    
     TK_EQ,
     TK_PLUS,
     TK_MINUS,
@@ -45,14 +44,14 @@ typedef enum {
 
 typedef struct {
     TokenKind kind;
-    const char* start;
-    const char* end;
+    const char *start;
+    const char *end;
     int line;
     int col;
 } Token;
 
 typedef struct {
-    const char* src;
+    const char *src;
     size_t len;
     size_t i;
     int line;
@@ -64,9 +63,9 @@ typedef struct {
     int pending_dedents;
 } Lexer;
 
-void lexer_init(Lexer* L, const char* src, size_t len);
-Token next_token(Lexer* L);
-bool token_is(const Token* t, const char* lit);
-char *token_str(const Token* t);
+void lexer_init(Lexer *L, const char *src, size_t len);
+Token next_token(Lexer *L);
+bool token_is(const Token *t, const char *lit);
+char *token_str(const Token *t);
 
 #endif

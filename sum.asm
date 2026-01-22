@@ -1,2 +1,0 @@
-default rel
-section .text

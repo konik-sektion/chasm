@@ -7,12 +7,15 @@
 static bool is_ident_start(int c) {
     return isalpha(c) || c == '_';
 }
+
 static bool is_ident(int c) {
     return isalnum(c) || c == '_';
 }
+
 static bool is_path_char(int c) {
     return isalnum(c) || c == '_' || c == '/' || c == '.' || c == '-';
 }
+
 static bool is_percent_ident_char(int c) {
     return isalnum(c) || c == '_' || c == '%';
 }
@@ -30,9 +33,9 @@ static Token make_token(TokenKind k, const char* s, const char* e, int line, int
 void lexer_init(Lexer* L, const char* src, size_t len) {
     L->src = src;
     L->len = len;
-    L->i   = 0;
+    L->i = 0;
     L->line = 1;
-    L-> col = 1;
+    L->col = 1;
     L->indent_top = 0;
     L->indent_stack[0] = 0;
     L->at_line_start = true;
@@ -52,7 +55,8 @@ static void skip_ws_inline(Lexer* L) {
 }
 
 static void skip_comment(Lexer* L) {
-    if (L->i + 2 < L->len && L->src[L->i] == ';' && L->src[L->i+1] == ';' && L->src[L->i+2] == ';') {
+    if (L->i + 2 < L->len && L->src[L->i] == ';' && L->src[L->i + 1] == ';'
+        && L->src[L->i + 2] == ';') {
         while (L->i < L->len && L->src[L->i] != '\n') {
             L->i++;
             L->col++;
@@ -110,17 +114,20 @@ Token next_token(Lexer* L) {
                     pops++;
                 }
                 if (indent != L->indent_stack[L->indent_top]) {
-                    die("indentation error");
+                    die("indentation error (misaligned dedent)");
                 }
                 L->col += (int)(j - L->i);
                 L->i = j;
                 L->at_line_start = false;
+
                 L->pending_dedents = pops - 1;
                 return make_token(TK_DEDENT, L->src + L->i, L->src + L->i, line, col);
             }
+
             L->col += (int)(j - L->i);
             L->i = j;
         }
+
         L->at_line_start = false;
     }
 
@@ -200,27 +207,29 @@ Token next_token(Lexer* L) {
             }
             break;
         case '"': {
-            const char *start = L->src + L->i;
+            const char* start = L->src + L->i;
             while (L->i < L->len && L->src[L->i] != '"') {
                 if (L->src[L->i] == '\n') die("unterminated string literal");
                 L->i++;
                 L->col++;
             }
             if (L->i >= L->len) die("unterminated string literal");
-            const char *end = L->src + L->i;
+            const char* end = L->src + L->i;
+
             L->i++;
             L->col++;
+
             return make_token(TK_STRING, start, end, line, col);
         }
         case '\'': {
-            const char *start = L->src + L->i;
+            const char* start = L->src + L->i;
             while (L->i < L->len && L->src[L->i] != '\'') {
                 if (L->src[L->i] == '\n') die("unterminated char literal");
                 L->i++;
                 L->col++;
             }
             if (L->i >= L->len) die("unterminated char literal");
-            const char *end = L->src + L->i;
+            const char* end = L->src + L->i;
             L->i++;
             L->col++;
             return make_token(TK_CHAR, start, end, line, col);
@@ -230,11 +239,20 @@ Token next_token(Lexer* L) {
     }
 
     if (c == '.' || c == '/') {
+        while (L->i < L->len && is_path_char((unsigned char)L->src[L->i])) {
+            L->i++;
+            L->col++;
+        }
+        return make_token(TK_PATH, s, L->src + L->i, line, col);
+    }
+
+    if (isdigit((unsigned char)c)) {
         if (c == '0' && L->i < L->len && (L->src[L->i] == 'x' || L->src[L->i] == 'X')) {
-            while (L->i < L->len && is_path_char((unsigned char)L->src[L->i])) {
+            L->i++;
+            L->col++;
+            while (L->i < L->len && isxdigit((unsigned char)L->src[L->i])) {
                 L->i++;
                 L->col++;
-        
             }
         } else {
             while (L->i < L->len && isdigit((unsigned char)L->src[L->i])) {
@@ -258,14 +276,20 @@ Token next_token(Lexer* L) {
         }
         return make_token(has_path ? TK_PATH : TK_IDENT, s, L->src + L->i, line, col);
     }
+
     die("invalid character");
     return make_token(TK_EOF, s, s, line, col);
 }
 
 bool token_is(const Token* t, const char* lit) {
     size_t n = (size_t)(t->end - t->start);
-    char* s = (char *)malloc(n + 1);
-    if (!s) die("Fatal: Out of Memory");
+    return strlen(lit) == n && strncmp(t->start, lit, n) == 0;
+}
+
+char* token_str(const Token* t) {
+    size_t n = (size_t)(t->end - t->start);
+    char* s = (char* )malloc(n + 1);
+    if (!s) die("oom");
     memcpy(s, t->start, n);
     s[n] = 0;
     return s;
