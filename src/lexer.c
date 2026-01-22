@@ -8,7 +8,7 @@ static bool is_ident_start(int c) {
     return isalpha(c) || c == '_';
 }
 static bool is_ident(int c) {
-    return isalnum(c) || == '_';
+    return isalnum(c) || c == '_';
 }
 static bool is_path_char(int c) {
     return isalnum(c) || c == '_' || c == '/' || c == '.' || c == '-';
@@ -102,7 +102,7 @@ Token next_token(Lexer* L) {
                 L->col += (int)(j - L->i);
                 L->i = j;
                 L->at_line_start = false;
-                return make(TK_INDENT, L->src + L->i, L->src + L->i, line, col);
+                return make_token(TK_INDENT, L->src + L->i, L->src + L->i, line, col);
             } else if (indent < cur) {
                 int pops = 0;
                 while (L->indent_top > 0 && indent < L->indent_stack[L->indent_top]) {
@@ -237,7 +237,7 @@ Token next_token(Lexer* L) {
         
             }
         } else {
-            while (L->i < L->len && isdigit((unsigned char)L_>src[L->i])) {
+            while (L->i < L->len && isdigit((unsigned char)L->src[L->i])) {
                 L->i++;
                 L->col++;
             }

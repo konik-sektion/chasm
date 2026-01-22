@@ -16,7 +16,7 @@ typedef enum {
     TK_HASH,
     TK_COMMA,
     TK_SEMI,
-    TK_COMMA,
+    TK_COLON,
     TK_LPAREN,
     TK_RPAREN,
     TK_LBRACE,
