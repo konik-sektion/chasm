@@ -244,11 +244,16 @@ typedef struct {
     SymbolTable symbols;
 } GlobalTable;
 
+static GlobalVar* find_global(GlobalTable* table, const char* name);
+
 static void add_global(GlobalTable* table,
                        const char* raw_name,
                        const char* qualified_name,
                        Type ty,
                        int reserve_count) {
+    if (find_global(table, qualified_name)) {
+        return;
+    }
     if (table->count + 1 > table->cap) {
         table->cap = (table->cap == 0) ? 16 : table->cap*  2;
         table->items = (GlobalVar* )realloc(table->items, table->cap*  sizeof(GlobalVar));
@@ -981,6 +986,19 @@ static void emit_macro_invocation(Parser* p) {
     if (p->cur.kind == TK_SEMI) next(p);
 }
 
+static const char* arg_reg_by_size(int index, int size_bytes) {
+    static const char* argregs64[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+    static const char* argregs32[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
+    static const char* argregs16[] = {"di", "si", "dx", "cx", "r8w", "r9w"};
+    static const char*  argregs8[] = {"dil", "sil", "dl", "cl", "r8b", "r9b"};
+
+    if (index < 0 || index >= 6) return NULL;
+    if (size_bytes == 1) return argregs8[index];
+    if (size_bytes == 2) return argregs16[index];
+    if (size_bytes == 4) return argregs32[index];
+    return argregs64[index];
+}
+
 static void parse_and_emit_func(Parser* p, const char* raw_name, bool is_global, bool is_inline) {
     (void)is_inline;
 
@@ -1034,7 +1052,6 @@ static void parse_and_emit_func(Parser* p, const char* raw_name, bool is_global,
 
     FrameLayout F = {0};
 
-    static const char* argregs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
     for (int i = 0; i < nparams; i++) {
         add_local(&F, params[i].name, params[i].ty);
     }
@@ -1047,14 +1064,10 @@ static void parse_and_emit_func(Parser* p, const char* raw_name, bool is_global,
         Local* Lc = find_local(&F, params[i].name);
         const char* sz = nasm_size(Lc->ty);
         if (i >= 6) die("too many params (phase1 supports 6)");
-        if (Lc->ty.kind == TY_U8 || Lc->ty.kind == TY_I8)
-            outfmt(p->O, "    mov %s [rbp%+d], %s\n", sz, Lc->rbp_off, "dil");
-        else if (Lc->ty.kind == TY_U16 || Lc->ty.kind == TY_I16)
-            outfmt(p->O, "    mov %s [rbp%+d], %s\n", sz, Lc->rbp_off, "di");
-        else if (Lc->ty.kind == TY_U32 || Lc->ty.kind == TY_I32)
-            outfmt(p->O, "    mov %s [rbp%+d], %s\n", sz, Lc->rbp_off, "edi");
-        else
-            outfmt(p->O, "    mov %s [rbp%+d], %s\n", sz, Lc->rbp_off, argregs[i]);
+        int size_bytes = type_size(Lc->ty);
+        const char* src = arg_reg_by_size(i, size_bytes);
+        if (!src) die("unsupported parameter register");
+        outfmt(p->O, "    mov %s [rbp%+d], %s\n", sz, Lc->rbp_off, src);
     }
 
     for (;;) {
@@ -1511,6 +1524,12 @@ static void compile_path(const char* path, Out* O, CompileContext* ctx, ImportSe
     if (emit_header) {
         outln(O, "default rel");
         outln(O, "section .text");
+        outln(O, "global _start");
+        outln(O, "_start:");
+        outln(O, "    call main");
+        outln(O, "    mov rdi, rax");
+        outln(O, "    mov rax, 60");
+        outln(O, "    syscall");
     }
 
     while (p.cur.kind != TK_EOF) {

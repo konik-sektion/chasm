@@ -6,3 +6,5 @@ chasmc
 *.asm
 out
 test
+compiled/*
+compiled

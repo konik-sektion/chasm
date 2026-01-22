@@ -1,7 +1,9 @@
 #include "lexer.h"
+
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include "util.h"
 
 static bool is_ident_start(int c) {
@@ -288,9 +290,11 @@ bool token_is(const Token* t, const char* lit) {
 
 char* token_str(const Token* t) {
     size_t n = (size_t)(t->end - t->start);
-    char* s = (char* )malloc(n + 1);
+    char* s = (char *)malloc(n + 1);
     if (!s) die("oom");
     memcpy(s, t->start, n);
     s[n] = 0;
     return s;
 }
+
+ 

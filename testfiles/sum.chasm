@@ -1,12 +1,17 @@
 #section data
 let sum:u8;
+let diff:i16;
 
 #section program
-local func add(num1:u8, num2:u8) >> u8:
+local func add(num1:u8, num2:u8) >> u16:
     ret num1 + num2;
 end
 
+local func subtract(num1:i8, num2:i8) >> i16:
+    ret num1 - num2;
+end
+
 global func main() >> u8:
-    set sum:u8 = add(5, 2);
+    set diff:i16 = subtract(5, 2);
     ret sum;
 end

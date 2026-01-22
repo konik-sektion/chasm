@@ -44,14 +44,14 @@ typedef enum {
 
 typedef struct {
     TokenKind kind;
-    const char *start;
-    const char *end;
+    const char* start;
+    const char* end;
     int line;
     int col;
 } Token;
 
 typedef struct {
-    const char *src;
+    const char* src;
     size_t len;
     size_t i;
     int line;
@@ -63,9 +63,9 @@ typedef struct {
     int pending_dedents;
 } Lexer;
 
-void lexer_init(Lexer *L, const char *src, size_t len);
-Token next_token(Lexer *L);
-bool token_is(const Token *t, const char *lit);
-char *token_str(const Token *t);
+void lexer_init(Lexer* L, const char* src, size_t len);
+Token next_token(Lexer* L);
+bool token_is(const Token* t, const char* lit);
+char* token_str(const Token* t);
 
 #endif
