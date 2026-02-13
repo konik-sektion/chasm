@@ -1,5 +1,5 @@
 # Introduction
-
+## Volume I
 ### Scope
 
 This document constitutes the normative specification of the Chassis Assembly
@@ -18,7 +18,10 @@ statically analyzable systems programming language whose compilation target
 is native machine code via structures lowering to conventional assembler
 (e.g., NASM for x64). ChASM is not defined as an extention of any existing
 Assembly language; rather Assembly is defined as a lower semantic stratum
-into which ChASM is translated.
+into which ChASM is translated. The specification also stands in testament
+to the author's immense and niche form of the 'Tism, as we (Me, Myself, and I)
+**all** know no one will read this but the author and the author's pals. It
+is yet another excuse to do nothing All Day (song by Kanye West).
 
 ---
 
@@ -74,3 +77,41 @@ $$
 $$
 \text{where}\ S_{out} = S_{in}
 $$
+
+All observable side effects (e.g., syscalls, I/O memory operations, etc.) are
+represented as state transformations.
+
+---
+
+### Execution Semantics
+
+A ChASM program is defined as a closed function:
+
+$$
+start\ : \ S_0 \to S_f
+$$
+
+where $`S_e`$ is the initial machine state sullied by the runtime environment
+and $`S_f`$ is the final machine state returned by evaluation.
+
+Program execution is defined as evaluation of `start` under the operational
+semantics defined in Volume III.
+
+This implementation shall lower this functional representation into a sequence
+of machine instructions that preserve semantic equivalence with the functional
+specification.
+
+---
+
+### Referential Transparency
+
+ChASM is referentially transparent (hence the name of this section...). For any
+expression $`E`$, replacing $`E`$ with its evaluated value shall not change
+program behavior. Formally (for any program context $`C\left[\ \right]`$):
+
+$$
+\text{If}\ E \Downarrow v, \text{then}\ C\left[E\right] \Downarrow r \Leftrightarrow C\left[v\rigjt] \Downarrow r
+$$
+
+This property is required for all well-typed programs.
+
