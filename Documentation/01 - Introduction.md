@@ -72,5 +72,5 @@ $$
 f\ :\ \left(V_1 \times ... \times V_n \times S) \to (V \times S\right)
 $$
 $$
-\text{where} S_{out} = S_{in}
+\text{where}\ S_{out} = S_{in}
 $$
