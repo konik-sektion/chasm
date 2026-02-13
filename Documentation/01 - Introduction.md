@@ -69,6 +69,7 @@ For pure computational functions that do not observe or modify machine state,
 the state parameter is functionally preserved:
 
 $$
-f\ :\ \left(V_1 \times ... \times V_n \times S) \to (V \times S\right) \\
+f\ :\ \left(V_1 \times ... \times V_n \times S) \to (V \times S\right)
+\\
 \text{where} S_{out} = S_{in}
 $$
