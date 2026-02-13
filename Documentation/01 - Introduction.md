@@ -59,7 +59,7 @@ Let:
 A ChASM function is defined formally as:
 
 $$
-f : \left(V_1 \times V_2 ... \times V_n \times S\right) \to \left(V \times S\right)
+f\ :\ \left(V_1 \times V_2 ... \times V_n \times S\right) \to \left(V \times S\right)
 $$
 
 That is, every function consumes zero or 
