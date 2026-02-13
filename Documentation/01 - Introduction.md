@@ -107,10 +107,10 @@ specification.
 
 ChASM is referentially transparent (hence the name of this section...). For any
 expression $`E`$, replacing $`E`$ with its evaluated value shall not change
-program behavior. Formally (for any program context $`C[\ ]`$):
+program behavior. Formally (for any program context $`C\left[\ \right]`$):
 
 $$
-\text{If}\ E \Downarrow v, \text{then}\ C\left[E\right] \Downarrow r \Leftrightarrow C\left[v\rigjt] \Downarrow r
+\text{If}\ E \Downarrow v, \text{then}\ C\left[E\right] \Downarrow r \Leftrightarrow C\left[v\right] \Downarrow r
 $$
 
 This property is required for all well-typed programs.
