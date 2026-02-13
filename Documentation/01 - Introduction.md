@@ -62,4 +62,13 @@ $$
 f\ :\ \left(V_1 \times V_2 ... \times V_n \times S\right) \to \left(V \times S\right)
 $$
 
-That is, every function consumes zero or 
+That is, every function consumes zero or more values and an explicit state
+value, and produces a value and a new state.
+
+For pure computational functions that do not observe or modify machine state,
+the state parameter is functionally preserved:
+
+$$
+f\ :\ \left(V_1 \times ... \times V_n \times S) \to (V \times S\right) \\
+\text{where} S_{out} = S_{in}
+$$
