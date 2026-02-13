@@ -113,5 +113,38 @@ $$
 \text{If}\ E \Downarrow v, \text{then}\ C\left[E\right] \Downarrow r \Leftrightarrow C\left[v\right] \Downarrow r
 $$
 
-This property is required for all well-typed programs.
+This property is required for all well-typed programs, quite obviously. If it
+is not obvious to you why, you may not have the required niche autism (elite
+ball knowledge) to understand.
+
+---
+
+### Identity and Constants
+
+In ChASM, constant values are defined as nullary functions. For a constant
+value $`k`$, the following equivalence holds:
+
+$$
+k = \lambda\left(\right).\ k
+$$
+
+Bindings of the form
+
+$$
+\text{let x:}\ T = E
+$$
+
+are defined as
+
+$$
+x = E
+$$
+
+where $`E`$ is a function producing a value of type $`T`$. 
+
+No reassignent construct exists in the core language. Any surface level
+syntax resembling "reassignment" shall be defined as shadowing via functional
+rebinding. The last statement will proceed to be meaningless jargon until
+subsequently defined in Chapter two-hundred-million-thousand.
+
 
